@@ -1,10 +1,10 @@
-import { FastifyInstance } from 'fastify'
-import { registerUser, loginUser } from './auth.service'
+import {FastifyInstance} from 'fastify'
+import {loginUser, registerUser} from './auth.service'
 
 export async function authRoutes(app: FastifyInstance) {
     // REGISTER
     app.post('/register', async (request, reply) => {
-        const { email, password } = request.body as {
+        const {email, password} = request.body as {
             email: string
             password: string
         }
@@ -17,13 +17,13 @@ export async function authRoutes(app: FastifyInstance) {
                 email: user.email
             }
         } catch (e) {
-            reply.code(400).send({ message: (e as Error).message })
+            reply.code(400).send({message: (e as Error).message})
         }
     })
 
     // LOGIN
     app.post('/login', async (request, reply) => {
-        const { email, password } = request.body as {
+        const {email, password} = request.body as {
             email: string
             password: string
         }
@@ -32,22 +32,23 @@ export async function authRoutes(app: FastifyInstance) {
             const user = await loginUser(email, password)
 
             const accessToken = app.jwt.sign(
-                { id: user.id, email: user.email },
-                { expiresIn: '15m' }
+                {id: user.id, email: user.email},
+                {expiresIn: '15m'}
             )
 
-            const refreshToken = app.signRefreshToken({ id: user.id, email: user.email })
+            const refreshToken = app.signRefreshToken({id: user.id, email: user.email})
 
             reply.setCookie('refreshToken', refreshToken, {
                 httpOnly: true,
                 secure: false, // true в production
-                sameSite: 'strict',
-                path: '/auth/refresh'
+                sameSite: 'lax',
+                path: '/',
+                maxAge: 7 * 24 * 60 * 60
             })
 
-            return { accessToken, refreshToken }
+            return {accessToken, id: user.id, email: user.email}
         } catch {
-            reply.code(401).send({ message: 'Invalid credentials' })
+            reply.code(401).send({message: 'Invalid credentials'})
         }
     })
 
@@ -55,7 +56,7 @@ export async function authRoutes(app: FastifyInstance) {
         const refreshToken = request.cookies.refreshToken
 
         if (!refreshToken) {
-            return reply.code(401).send({ message: 'No refresh token' })
+            return reply.code(401).send({message: 'No refresh token'})
         }
 
         try {
@@ -68,12 +69,20 @@ export async function authRoutes(app: FastifyInstance) {
                     id: payload.id,
                     email: request.user?.email // может быть undefined, это ок
                 },
-                { expiresIn: '15m' }
+                {expiresIn: '1d'}
             )
 
-            return { accessToken }
+            reply.setCookie('refreshToken', refreshToken, {
+                httpOnly: true,
+                secure: false, // true в production
+                sameSite: 'lax',
+                path: '/',
+                maxAge: 7 * 24 * 60 * 60
+            })
+
+            return {accessToken}
         } catch {
-            reply.code(401).send({ message: 'Invalid refresh token' })
+            reply.code(401).send({message: 'Invalid refresh token'})
         }
     })
 
@@ -81,9 +90,9 @@ export async function authRoutes(app: FastifyInstance) {
     // ME (protected)
     app.get(
         '/me',
-        { preHandler: [app.auth] },
+        {preHandler: [app.auth]},
         async (request) => {
-            return request.user
+            return {id: request.user.id, email: request.user.email}
         }
     )
 
@@ -92,7 +101,7 @@ export async function authRoutes(app: FastifyInstance) {
             path: '/auth/refresh'
         })
 
-        return { message: 'Logged out' }
+        return {message: 'Logged out'}
     })
 
 }
